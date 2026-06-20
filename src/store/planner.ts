@@ -1,7 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
-import { Plot, PlacedItem, Plan, Side } from '@/types';
+import { Plot, PlacedItem, Plan, Side, DrawingType } from '@/types';
 
 interface PlannerState {
   // Plan meta
@@ -30,6 +30,7 @@ interface PlannerState {
   panX: number;
   panY: number;
   setPan: (x: number, y: number) => void;
+  setView: (scale: number, panX: number, panY: number) => void;
 
   // UI state
   showGrid: boolean;
@@ -44,6 +45,10 @@ interface PlannerState {
   pushHistory: () => void;
   undo: () => void;
   redo: () => void;
+
+  // Drawing type
+  drawingType: DrawingType;
+  setDrawingType: (t: DrawingType) => void;
 
   // Load a full plan
   loadPlan: (plan: Plan) => void;
@@ -82,9 +87,10 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
 
   scale: 20, // pixels per foot
   setScale: (scale) => set({ scale: Math.max(8, Math.min(60, scale)) }),
-  panX: 60,
-  panY: 60,
+  panX: 20,
+  panY: 20,
   setPan: (panX, panY) => set({ panX, panY }),
+  setView: (scale, panX, panY) => set({ scale: Math.max(8, Math.min(60, scale)), panX, panY }),
 
   showGrid: true,
   toggleGrid: () => set((s) => ({ showGrid: !s.showGrid })),
@@ -113,6 +119,9 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     set({ items: JSON.parse(JSON.stringify(history[newIndex])), historyIndex: newIndex });
   },
 
+  drawingType: 'architectural' as DrawingType,
+  setDrawingType: (t) => set({ drawingType: t }),
+
   loadPlan: (plan) => {
     set({
       planId: plan.id,
@@ -120,6 +129,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       planDescription: plan.description,
       plot: plan.plot,
       items: plan.items,
+      drawingType: plan.drawingType ?? 'architectural',
       selectedId: null,
       history: [],
       historyIndex: -1,

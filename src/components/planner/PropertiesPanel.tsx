@@ -1,13 +1,89 @@
 'use client';
 
+import { useState, useEffect, useRef } from 'react';
 import { usePlannerStore } from '@/store/planner';
 import { getItemByType } from '@/lib/items';
+import { svgToDisplay, displayToSvg, maxDisplay } from '@/lib/coordinates';
+import DividePanel from './DividePanel';
 
 const COLORS = [
   '#dbeafe','#ede9fe','#fce7f3','#dcfce7','#fef9c3','#fde68a',
   '#bfdbfe','#c4b5fd','#fca5a5','#a3e635','#67e8f9','#fbbf24',
   '#94a3b8','#374151','#92400e','#065f46',
 ];
+
+// ── NumberInput ─────────────────────────────────────────────────────────────
+// Buffers keyboard input locally; only commits to the store on blur or Enter.
+// This way you can freely type any number without the field fighting you.
+function NumberInput({
+  value,
+  min,
+  max,
+  step = 0.5,
+  onChange,
+  className = '',
+}: {
+  value: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  onChange: (v: number) => void;
+  className?: string;
+}) {
+  const [draft, setDraft] = useState<string>(String(value));
+  const [focused, setFocused] = useState(false);
+  const prevId = useRef<string | null>(null);
+
+  // When the store value changes and we're NOT focused, sync the display.
+  useEffect(() => {
+    if (!focused) setDraft(String(value));
+  }, [value, focused]);
+
+  function commit(raw: string) {
+    const parsed = parseFloat(raw);
+    if (isNaN(parsed)) {
+      setDraft(String(value)); // revert to last valid
+      return;
+    }
+    let clamped = parsed;
+    if (min !== undefined) clamped = Math.max(min, clamped);
+    if (max !== undefined) clamped = Math.min(max, clamped);
+    onChange(clamped);
+    setDraft(String(clamped));
+  }
+
+  return (
+    <input
+      type="number"
+      step={step}
+      min={min}
+      max={max}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={(e) => {
+        setFocused(true);
+        e.currentTarget.select();
+      }}
+      onBlur={(e) => {
+        setFocused(false);
+        commit(e.currentTarget.value);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.currentTarget.blur();
+        }
+        if (e.key === 'Escape') {
+          setDraft(String(value));
+          e.currentTarget.blur();
+        }
+      }}
+      className={className}
+    />
+  );
+}
+
+const inputCls =
+  'w-full bg-slate-700/50 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500 mt-0.5';
 
 export default function PropertiesPanel() {
   const store = usePlannerStore();
@@ -73,20 +149,46 @@ export default function PropertiesPanel() {
 
         {/* Position */}
         <div>
-          <label className="block text-xs font-medium text-slate-400 mb-1">Position (feet from origin)</label>
+          <label className="block text-xs font-medium text-slate-400 mb-1">
+            Position from origin <span className="text-blue-400 font-mono">{store.plot.origin}</span> (feet)
+          </label>
           <div className="grid grid-cols-2 gap-2">
-            <div>
-              <span className="text-xs text-slate-500">X</span>
-              <input type="number" step={0.5} value={item.x.toFixed(1)}
-                onChange={(e) => update({ x: Math.max(0, Number(e.target.value)) })}
-                className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500 mt-0.5" />
-            </div>
-            <div>
-              <span className="text-xs text-slate-500">Y</span>
-              <input type="number" step={0.5} value={item.y.toFixed(1)}
-                onChange={(e) => update({ y: Math.max(0, Number(e.target.value)) })}
-                className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500 mt-0.5" />
-            </div>
+            {(() => {
+              const disp = svgToDisplay(item.x, item.y, item.width, item.height, store.plot);
+              const maxD = maxDisplay(item.width, item.height, store.plot);
+              return (
+                <>
+                  <div>
+                    <span className="text-xs text-slate-500">X (width-wise)</span>
+                    <NumberInput
+                      value={parseFloat(disp.x.toFixed(2))}
+                      min={0}
+                      max={parseFloat(maxD.x.toFixed(2))}
+                      step={0.5}
+                      onChange={(v) => {
+                        const svg = displayToSvg(v, disp.y, item.width, item.height, store.plot);
+                        update({ x: Math.max(0, Math.min(store.plot.width - item.width, svg.x)) });
+                      }}
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500">Y (height-wise)</span>
+                    <NumberInput
+                      value={parseFloat(disp.y.toFixed(2))}
+                      min={0}
+                      max={parseFloat(maxD.y.toFixed(2))}
+                      step={0.5}
+                      onChange={(v) => {
+                        const svg = displayToSvg(disp.x, v, item.width, item.height, store.plot);
+                        update({ y: Math.max(0, Math.min(store.plot.height - item.height, svg.y)) });
+                      }}
+                      className={inputCls}
+                    />
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
 
@@ -96,18 +198,25 @@ export default function PropertiesPanel() {
           <div className="grid grid-cols-2 gap-2">
             <div>
               <span className="text-xs text-slate-500">Width</span>
-              <input type="number" step={0.5} min={0.5} value={item.width.toFixed(1)}
-                onChange={(e) => update({ width: Math.max(0.5, Number(e.target.value)) })}
-                className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500 mt-0.5" />
+              <NumberInput
+                value={item.width}
+                min={0.5}
+                step={0.5}
+                onChange={(v) => update({ width: v })}
+                className={inputCls}
+              />
             </div>
             <div>
               <span className="text-xs text-slate-500">Height</span>
-              <input type="number" step={0.5} min={0.5} value={item.height.toFixed(1)}
-                onChange={(e) => update({ height: Math.max(0.5, Number(e.target.value)) })}
-                className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500 mt-0.5" />
+              <NumberInput
+                value={item.height}
+                min={0.5}
+                step={0.5}
+                onChange={(v) => update({ height: v })}
+                className={inputCls}
+              />
             </div>
           </div>
-          {/* Area */}
           <div className="mt-1.5 bg-slate-700/20 rounded-lg px-3 py-1.5 text-xs text-slate-400 flex justify-between">
             <span>Area</span>
             <span className="font-semibold text-slate-300">{(item.width * item.height).toFixed(1)} sq.ft</span>
@@ -116,10 +225,26 @@ export default function PropertiesPanel() {
 
         {/* Rotation */}
         <div>
-          <label className="block text-xs font-medium text-slate-400 mb-1">
-            Rotation: {item.rotation}°
-          </label>
-          <input type="range" min={0} max={359} step={15} value={item.rotation}
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-medium text-slate-400">Rotation</label>
+            <div className="flex items-center gap-1.5">
+              <NumberInput
+                value={item.rotation}
+                min={0}
+                max={359}
+                step={1}
+                onChange={(v) => update({ rotation: Math.round(v) % 360 })}
+                className="w-16 bg-slate-700/50 border border-slate-600 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <span className="text-xs text-slate-500">°</span>
+            </div>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={359}
+            step={1}
+            value={item.rotation}
             onChange={(e) => update({ rotation: Number(e.target.value) })}
             className="w-full accent-blue-500"
           />
@@ -157,25 +282,66 @@ export default function PropertiesPanel() {
         {/* Z-Index */}
         <div>
           <label className="block text-xs font-medium text-slate-400 mb-1">Layer (z-index)</label>
-          <input type="number" min={0} max={10} value={item.zIndex}
-            onChange={(e) => update({ zIndex: Number(e.target.value) })}
-            className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          <NumberInput
+            value={item.zIndex}
+            min={0}
+            max={10}
+            step={1}
+            onChange={(v) => update({ zIndex: Math.round(v) })}
+            className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
         </div>
 
         {/* Coordinates summary */}
         <div className="bg-slate-700/20 rounded-xl p-3">
-          <div className="text-xs font-medium text-slate-400 mb-2">Coordinates Summary</div>
-          <div className="grid grid-cols-2 gap-y-1 text-xs text-slate-400">
-            <span>Top-left</span>
-            <span className="font-mono text-slate-300">({item.x.toFixed(1)}, {item.y.toFixed(1)})</span>
-            <span>Top-right</span>
-            <span className="font-mono text-slate-300">({(item.x + item.width).toFixed(1)}, {item.y.toFixed(1)})</span>
-            <span>Bottom-left</span>
-            <span className="font-mono text-slate-300">({item.x.toFixed(1)}, {(item.y + item.height).toFixed(1)})</span>
-            <span>Bottom-right</span>
-            <span className="font-mono text-slate-300">({(item.x + item.width).toFixed(1)}, {(item.y + item.height).toFixed(1)})</span>
+          <div className="text-xs font-medium text-slate-400 mb-2">
+            Corner Coordinates&nbsp;
+            <span className="text-blue-400 font-mono text-[10px]">(from origin {store.plot.origin})</span>
           </div>
+          {(() => {
+            // Compute all 4 SVG corners then convert each to display coords
+            const corners = [
+              { label: 'Top-left',     sx: item.x,              sy: item.y,               iw: 0, ih: 0 },
+              { label: 'Top-right',    sx: item.x + item.width, sy: item.y,               iw: item.width, ih: 0 },
+              { label: 'Bottom-left',  sx: item.x,              sy: item.y + item.height, iw: 0, ih: item.height },
+              { label: 'Bottom-right', sx: item.x + item.width, sy: item.y + item.height, iw: item.width, ih: item.height },
+            ].map(({ label, sx, sy, iw, ih }) => ({
+              label,
+              disp: svgToDisplay(sx - iw, sy - ih, iw || item.width, ih || item.height, store.plot),
+            }));
+            // Simpler: just convert each raw corner point directly
+            const pt = (svgPtX: number, svgPtY: number) => {
+              // For a point (not an area), treat itemW/itemH as 0 and add the point directly
+              // Use origin A as base: display = transformed point
+              const { origin, width: W, height: H } = store.plot;
+              switch (origin) {
+                case 'A': return { x: svgPtX,     y: svgPtY };
+                case 'B': return { x: W - svgPtX, y: svgPtY };
+                case 'C': return { x: W - svgPtX, y: H - svgPtY };
+                case 'D': return { x: svgPtX,     y: H - svgPtY };
+              }
+            };
+            const tl = pt(item.x,              item.y);
+            const tr = pt(item.x + item.width, item.y);
+            const bl = pt(item.x,              item.y + item.height);
+            const br = pt(item.x + item.width, item.y + item.height);
+            return (
+              <div className="grid grid-cols-2 gap-y-1 text-xs text-slate-400">
+                <span>Top-left</span>
+                <span className="font-mono text-slate-300">({tl.x.toFixed(1)}, {tl.y.toFixed(1)})</span>
+                <span>Top-right</span>
+                <span className="font-mono text-slate-300">({tr.x.toFixed(1)}, {tr.y.toFixed(1)})</span>
+                <span>Bottom-left</span>
+                <span className="font-mono text-slate-300">({bl.x.toFixed(1)}, {bl.y.toFixed(1)})</span>
+                <span>Bottom-right</span>
+                <span className="font-mono text-slate-300">({br.x.toFixed(1)}, {br.y.toFixed(1)})</span>
+              </div>
+            );
+          })()}
         </div>
+
+        {/* Divide */}
+        <DividePanel item={item} />
 
         {/* Delete */}
         <button

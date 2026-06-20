@@ -1,3 +1,7 @@
+import type { DrawingType } from '@/lib/drawingTypes';
+
+export type { DrawingType };
+
 export type Side = 'A' | 'B' | 'C' | 'D';
 
 export interface Plot {
@@ -19,7 +23,14 @@ export type ItemCategory =
   | 'storage'
   | 'outdoor'
   | 'stairs'
-  | 'study';
+  | 'study'
+  | 'pathway'
+  | 'electrical'
+  | 'plumbing'
+  | 'structural-eng'
+  | 'foundation-eng'
+  | 'site'
+  | 'elevation-view';
 
 export interface ItemDefinition {
   type: string;
@@ -31,6 +42,7 @@ export interface ItemDefinition {
   icon: string;
   resizable: boolean;
   description: string;
+  drawingType?: DrawingType;
 }
 
 export interface PlacedItem {
@@ -38,10 +50,10 @@ export interface PlacedItem {
   type: string;
   name: string;
   label: string;
-  x: number;       // feet from origin
-  y: number;       // feet from origin
-  width: number;   // feet
-  height: number;  // feet
+  x: number;        // feet from origin
+  y: number;        // feet from origin
+  width: number;    // feet
+  height: number;   // feet
   rotation: number; // degrees
   color: string;
   locked: boolean;
@@ -57,6 +69,7 @@ export interface Plan {
   items: PlacedItem[];
   createdAt: string;
   updatedAt: string;
+  drawingType?: DrawingType;
 }
 
 export interface User {

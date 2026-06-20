@@ -2,8 +2,6 @@
 
 import { useRouter } from 'next/navigation';
 import { usePlannerStore } from '@/store/planner';
-import { Plan } from '@/types';
-import { v4 as uuidv4 } from 'uuid';
 
 interface ToolbarProps {
   onSetup: () => void;

@@ -1,27 +1,40 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { usePlannerStore } from '@/store/planner';
 import { ITEM_LIBRARY, ITEM_CATEGORIES } from '@/lib/items';
+import { DRAWING_TYPE_META } from '@/lib/drawingTypes';
 import { ItemDefinition, PlacedItem } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
+import { getVisibleCenter } from '@/lib/canvasRef';
 
-const CATEGORY_ORDER = [
-  'structure', 'rooms', 'doors', 'windows', 'bathroom',
-  'kitchen', 'bedroom', 'living', 'dining', 'storage',
-  'outdoor', 'stairs', 'study',
-];
+// Categories shown for each drawing type
+const TYPE_CATEGORIES: Record<string, string[]> = {
+  architectural: ['structure', 'rooms', 'doors', 'windows', 'bathroom', 'kitchen', 'bedroom', 'living', 'dining', 'storage', 'outdoor', 'stairs', 'study', 'pathway'],
+  structural:    ['structural-eng', 'structure'],
+  electrical:    ['electrical'],
+  plumbing:      ['plumbing', 'bathroom'],
+  foundation:    ['foundation-eng', 'structural-eng'],
+  'site-plan':   ['site', 'outdoor', 'pathway'],
+  elevation:     ['elevation-view'],
+};
 
 export default function ItemPanel() {
   const store = usePlannerStore();
+  const drawingType = store.drawingType;
   const [search, setSearch] = useState('');
   const [expandedCats, setExpandedCats] = useState<Set<string>>(
-    new Set(['rooms', 'doors', 'bathroom', 'kitchen'])
+    new Set(['rooms', 'doors', 'bathroom', 'kitchen', 'electrical', 'plumbing', 'structural-eng', 'foundation-eng', 'site', 'elevation-view'])
   );
   const searchRef = useRef<HTMLInputElement>(null);
 
+  const allowedCats = TYPE_CATEGORIES[drawingType] ?? TYPE_CATEGORIES.architectural;
+  const meta = DRAWING_TYPE_META[drawingType];
+
+  const visibleItems = ITEM_LIBRARY.filter((it) => allowedCats.includes(it.category));
+
   const filtered = search.trim()
-    ? ITEM_LIBRARY.filter(
+    ? visibleItems.filter(
         (it) =>
           it.name.toLowerCase().includes(search.toLowerCase()) ||
           it.description.toLowerCase().includes(search.toLowerCase()) ||
@@ -39,14 +52,17 @@ export default function ItemPanel() {
   }
 
   function addItem(def: ItemDefinition) {
-    const { plot } = store;
-    const cx = Math.max(0, (plot.width - def.defaultWidth) / 2);
-    const cy = Math.max(0, (plot.height - def.defaultHeight) / 2);
+    const { plot, panX, panY, scale } = store;
+    const visCenter = getVisibleCenter(panX, panY, scale, plot.width, plot.height);
+    const cx = Math.max(0, Math.min(plot.width  - def.defaultWidth,  visCenter.x - def.defaultWidth  / 2));
+    const cy = Math.max(0, Math.min(plot.height - def.defaultHeight, visCenter.y - def.defaultHeight / 2));
 
     const zMap: Record<string, number> = {
       structure: 0, rooms: 1, bathroom: 1, kitchen: 1,
       doors: 5, windows: 5, stairs: 3,
       bedroom: 4, living: 4, dining: 4, storage: 4, outdoor: 2, study: 4,
+      electrical: 6, plumbing: 6, 'structural-eng': 1, 'foundation-eng': 0,
+      site: 1, 'elevation-view': 1,
     };
 
     const item: PlacedItem = {
@@ -92,10 +108,20 @@ export default function ItemPanel() {
 
   return (
     <div className="flex flex-col h-full bg-slate-850 border-r border-slate-700">
+      {/* Drawing type indicator */}
+      <div className="px-3 pt-2.5 pb-1">
+        <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg"
+          style={{ backgroundColor: meta.color + '18', border: `1px solid ${meta.color}33` }}>
+          <span className="text-base">{meta.icon}</span>
+          <div className="min-w-0">
+            <div className="text-xs font-semibold truncate" style={{ color: meta.color }}>{meta.label}</div>
+          </div>
+        </div>
+      </div>
+
       {/* Header */}
-      <div className="p-3 border-b border-slate-700">
+      <div className="px-3 pb-2 pt-1 border-b border-slate-700">
         <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Add Items</h3>
-        {/* Search */}
         <div className="relative">
           <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -120,7 +146,6 @@ export default function ItemPanel() {
       {/* Item list */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar-thin">
         {filtered ? (
-          // Search results
           filtered.length === 0 ? (
             <div className="text-center text-slate-500 text-sm py-8">No items found</div>
           ) : (
@@ -129,9 +154,8 @@ export default function ItemPanel() {
             </div>
           )
         ) : (
-          // Categorized
-          CATEGORY_ORDER.map((cat) => {
-            const items = ITEM_LIBRARY.filter((it) => it.category === cat);
+          allowedCats.map((cat) => {
+            const items = visibleItems.filter((it) => it.category === cat);
             if (!items.length) return null;
             const open = expandedCats.has(cat);
             return (
@@ -164,7 +188,7 @@ export default function ItemPanel() {
       {/* Tip */}
       <div className="p-3 border-t border-slate-700">
         <p className="text-xs text-slate-600 leading-relaxed">
-          Click an item to add it to the center of the canvas. Drag to reposition. Use Properties panel to resize.
+          Click to add · Drag to move · Arrow keys to nudge · ✕ to delete
         </p>
       </div>
     </div>

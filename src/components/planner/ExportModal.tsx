@@ -2,9 +2,19 @@
 
 import { useState } from 'react';
 import { usePlannerStore } from '@/store/planner';
-import { PlacedItem, RoomSummary } from '@/types';
+import { PlacedItem, Plot, RoomSummary } from '@/types';
 
-function getRoomSummaries(items: PlacedItem[]): RoomSummary[] {
+function ptToDisplay(svgPtX: number, svgPtY: number, plot: Plot) {
+  const { origin, width: W, height: H } = plot;
+  switch (origin) {
+    case 'A': return { x: svgPtX,     y: svgPtY };
+    case 'B': return { x: W - svgPtX, y: svgPtY };
+    case 'C': return { x: W - svgPtX, y: H - svgPtY };
+    case 'D': return { x: svgPtX,     y: H - svgPtY };
+  }
+}
+
+function getRoomSummaries(items: PlacedItem[], plot: Plot): RoomSummary[] {
   const roomTypes = [
     'room','master-bedroom','bedroom','kids-room','guest-room',
     'living-room','drawing-room','study','prayer-room','store-room',
@@ -13,27 +23,33 @@ function getRoomSummaries(items: PlacedItem[]): RoomSummary[] {
   ];
   return items
     .filter((it) => roomTypes.includes(it.type))
-    .map((it) => ({
-      id: it.id,
-      label: it.label,
-      type: it.type,
-      x: it.x,
-      y: it.y,
-      width: it.width,
-      height: it.height,
-      area: parseFloat((it.width * it.height).toFixed(2)),
-      coordinates: {
-        topLeft: { x: parseFloat(it.x.toFixed(2)), y: parseFloat(it.y.toFixed(2)) },
-        topRight: { x: parseFloat((it.x + it.width).toFixed(2)), y: parseFloat(it.y.toFixed(2)) },
-        bottomLeft: { x: parseFloat(it.x.toFixed(2)), y: parseFloat((it.y + it.height).toFixed(2)) },
-        bottomRight: { x: parseFloat((it.x + it.width).toFixed(2)), y: parseFloat((it.y + it.height).toFixed(2)) },
-      },
-    }));
+    .map((it) => {
+      const tl = ptToDisplay(it.x,             it.y,              plot);
+      const tr = ptToDisplay(it.x + it.width,  it.y,              plot);
+      const bl = ptToDisplay(it.x,             it.y + it.height,  plot);
+      const br = ptToDisplay(it.x + it.width,  it.y + it.height,  plot);
+      return {
+        id: it.id,
+        label: it.label,
+        type: it.type,
+        x: parseFloat(tl.x.toFixed(2)),
+        y: parseFloat(tl.y.toFixed(2)),
+        width: it.width,
+        height: it.height,
+        area: parseFloat((it.width * it.height).toFixed(2)),
+        coordinates: {
+          topLeft:     { x: parseFloat(tl.x.toFixed(2)), y: parseFloat(tl.y.toFixed(2)) },
+          topRight:    { x: parseFloat(tr.x.toFixed(2)), y: parseFloat(tr.y.toFixed(2)) },
+          bottomLeft:  { x: parseFloat(bl.x.toFixed(2)), y: parseFloat(bl.y.toFixed(2)) },
+          bottomRight: { x: parseFloat(br.x.toFixed(2)), y: parseFloat(br.y.toFixed(2)) },
+        },
+      };
+    });
 }
 
 function generateReportText(store: ReturnType<typeof usePlannerStore.getState>): string {
   const { planName, planDescription, plot, items } = store;
-  const rooms = getRoomSummaries(items);
+  const rooms = getRoomSummaries(items, plot);
   const totalArea = rooms.reduce((s, r) => s + r.area, 0);
   const now = new Date().toLocaleDateString('en-PK', { year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -124,7 +140,7 @@ export default function ExportModal({ onClose }: { onClose: () => void }) {
           generatedAt: new Date().toISOString(),
         },
         plot: store.plot,
-        rooms: getRoomSummaries(store.items),
+        rooms: getRoomSummaries(store.items, store.plot),
         allItems: store.items,
       };
       download(JSON.stringify(data, null, 2), `${safeName}.json`, 'application/json');
@@ -144,7 +160,7 @@ export default function ExportModal({ onClose }: { onClose: () => void }) {
     window.print();
   }
 
-  const rooms = getRoomSummaries(store.items);
+  const rooms = getRoomSummaries(store.items, store.plot);
   const totalArea = rooms.reduce((s, r) => s + r.area, 0);
 
   return (

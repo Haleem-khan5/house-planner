@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
       description: body.description || '',
       plot: body.plot,
       items: body.items || [],
+      drawingType: body.drawingType || 'architectural',
       createdAt: body.createdAt || now,
       updatedAt: now,
     };

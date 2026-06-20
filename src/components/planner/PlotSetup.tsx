@@ -11,12 +11,22 @@ const ORIGIN_OPTIONS: { value: Side; label: string; desc: string }[] = [
   { value: 'D', label: 'Corner D', desc: 'Bottom-left' },
 ];
 
+function parseDim(raw: string, fallback: number, min = 10, max = 200): number {
+  const n = parseFloat(raw);
+  if (isNaN(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
 export default function PlotSetup({ onClose }: { onClose: () => void }) {
   const store = usePlannerStore();
-  const [width, setWidth] = useState(store.plot.width);
-  const [height, setHeight] = useState(store.plot.height);
+  const [widthStr, setWidthStr] = useState(String(store.plot.width));
+  const [heightStr, setHeightStr] = useState(String(store.plot.height));
   const [origin, setOrigin] = useState<Side>(store.plot.origin);
   const [name, setName] = useState(store.planName);
+
+  // Parsed numbers (used only for area preview and Apply)
+  const width = parseDim(widthStr, store.plot.width);
+  const height = parseDim(heightStr, store.plot.height);
 
   function handleApply() {
     store.setPlot({ width, height, origin });
@@ -58,8 +68,11 @@ export default function PlotSetup({ onClose }: { onClose: () => void }) {
               <input
                 type="number"
                 min={10} max={200}
-                value={width}
-                onChange={(e) => setWidth(Number(e.target.value))}
+                value={widthStr}
+                onChange={(e) => setWidthStr(e.target.value)}
+                onFocus={(e) => e.currentTarget.select()}
+                onBlur={(e) => setWidthStr(String(parseDim(e.target.value, width)))}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                 className="w-full bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -70,8 +83,11 @@ export default function PlotSetup({ onClose }: { onClose: () => void }) {
               <input
                 type="number"
                 min={10} max={200}
-                value={height}
-                onChange={(e) => setHeight(Number(e.target.value))}
+                value={heightStr}
+                onChange={(e) => setHeightStr(e.target.value)}
+                onFocus={(e) => e.currentTarget.select()}
+                onBlur={(e) => setHeightStr(String(parseDim(e.target.value, height)))}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                 className="w-full bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -107,6 +123,9 @@ export default function PlotSetup({ onClose }: { onClose: () => void }) {
                   <div>
                     <div className="text-sm font-medium text-slate-200">{opt.label}</div>
                     <div className="text-xs text-slate-500">{opt.desc}</div>
+                    {origin === opt.value && (
+                      <div className="text-xs font-mono font-semibold text-blue-400 mt-0.5">(X,Y) = (0,0)</div>
+                    )}
                   </div>
                 </button>
               ))}
@@ -115,19 +134,37 @@ export default function PlotSetup({ onClose }: { onClose: () => void }) {
 
           {/* Diagram */}
           <div className="bg-slate-700/20 rounded-xl p-4">
-            <svg viewBox="-10 -10 120 90" className="w-full h-20">
+            <svg viewBox="-20 -20 150 110" className="w-full h-24">
               <rect x={0} y={0} width={100} height={70} fill="#1e293b" stroke="#334155" strokeWidth={2} />
-              {[['A', -8, -8], ['B', 102, -8], ['C', 102, 72], ['D', -8, 72]].map(([l, x, y]) => (
-                <g key={l as string}>
-                  <circle cx={Number(x) + 6} cy={Number(y) + 6} r={7}
-                    fill={l === origin ? '#2563eb' : '#334155'} />
-                  <text x={Number(x) + 6} y={Number(y) + 6} textAnchor="middle" dominantBaseline="central"
-                    fontSize={8} fontWeight="bold" fill="white">{l}</text>
-                </g>
-              ))}
-              <text x={50} y={-3} textAnchor="middle" fontSize={7} fill="#94a3b8">{width} ft</text>
-              <text x={108} y={35} textAnchor="middle" fontSize={7} fill="#94a3b8"
-                transform="rotate(-90, 108, 35)">{height} ft</text>
+              {([
+                ['A', -8, -8, 'middle', 'auto'],
+                ['B', 102, -8, 'start', 'auto'],
+                ['C', 102, 72, 'start', 'hanging'],
+                ['D', -8, 72, 'middle', 'hanging'],
+              ] as const).map(([l, x, y, anchor, baseline]) => {
+                const isOrigin = l === origin;
+                const cx = Number(x) + 6;
+                const cy = Number(y) + 6;
+                // position the (0,0) label away from the plot edge
+                const labelOffsets: Record<string, [number, number]> = {
+                  A: [-2, -10], B: [2, -10], C: [2, 10], D: [-2, 10],
+                };
+                const [lox, loy] = labelOffsets[l];
+                return (
+                  <g key={l}>
+                    <circle cx={cx} cy={cy} r={8} fill={isOrigin ? '#2563eb' : '#334155'} />
+                    <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central"
+                      fontSize={8} fontWeight="bold" fill="white">{l}</text>
+                    {isOrigin && (
+                      <text x={cx + lox} y={cy + loy} textAnchor="middle" dominantBaseline="central"
+                        fontSize={6} fill="#60a5fa" fontFamily="monospace">(0,0)</text>
+                    )}
+                  </g>
+                );
+              })}
+              <text x={50} y={-8} textAnchor="middle" fontSize={7} fill="#94a3b8">{width} ft</text>
+              <text x={114} y={35} textAnchor="middle" fontSize={7} fill="#94a3b8"
+                transform="rotate(-90, 114, 35)">{height} ft</text>
             </svg>
           </div>
         </div>
